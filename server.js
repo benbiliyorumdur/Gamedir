@@ -46,7 +46,9 @@ const MOB_TYPES = [
   { shape: 'spider', color: '#2a1a38', outline: '#0f0814', eyes: '#ff1100', typeName: '🕷️ Örümcek', radius: 48, hp: 380, dmg: 34, speed: 26, wanderSpeed: 13, xpReward: 100, goldReward: 45 },
 ];
 const dataFile = process.env.DATA_FILE || path.join(__dirname, 'forest-data.json');
-const authSecret = process.env.AUTH_SECRET || 'forestbrawl-auth-secret-change-me';
+const authSecret = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
+if (!process.env.AUTH_SECRET) console.warn('[Security] AUTH_SECRET is not set; tokens will reset after restart.');
+const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || 'https://forestbrawl.fun,http://localhost:3000').split(',').map(origin => origin.trim()).filter(Boolean));
 let worldSeed = Math.floor(Math.random() * 0x7fffffff);
 let nextMobId = 1;
 const airdrops = new Map();
@@ -708,7 +710,14 @@ const mime = {
 };
 
 const server = http.createServer((request, response) => {
-  const requestPath = decodeURIComponent((request.url || '/').split('?')[0]);
+  let requestPath;
+  try {
+    requestPath = decodeURIComponent((request.url || '/').split('?')[0]);
+  } catch {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Bad request');
+    return;
+  }
   handleApi(request, response, requestPath).then(handled => {
     if (handled) return;
     serveStatic(request, response, requestPath);
@@ -724,13 +733,15 @@ function serveStatic(request, response, requestPath) {
   else if (relative.startsWith('game\\')) relative = relative.slice(5);
   if (relative === '') relative = 'index.html';
 
-  let filePath = path.resolve(root, relative);
-  if (!fs.existsSync(filePath)) {
-    const fallbackPath = path.resolve(__dirname, requestPath.replace(/^\/+/, ''));
-    if (fs.existsSync(fallbackPath)) filePath = fallbackPath;
+  const blockedPath = /(^|[\\/])(?:\.|server\.js$|package(?:-lock)?\.json$|forest-data\.json(?:\.bak)?$|ecosystem\.config\.[cm]?js$|render\.yaml$|\.nvmrc$)/i;
+  if (blockedPath.test(relative)) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+    response.end('Not found');
+    return;
   }
 
-  if (!filePath.startsWith(root) && !filePath.startsWith(__dirname)) {
+  let filePath = path.resolve(root, relative);
+  if (!filePath.startsWith(`${root}${path.sep}`) && filePath !== root) {
     response.writeHead(403);
     response.end('Forbidden');
     return;
@@ -741,14 +752,26 @@ function serveStatic(request, response, requestPath) {
       response.end(error.code === 'ENOENT' ? 'Not found' : 'Server error');
       return;
     }
-    response.writeHead(200, { 'Content-Type': mime[path.extname(filePath)] || 'application/octet-stream' });
+    const extension = path.extname(filePath).toLowerCase();
+    const isHtmlOrCode = ['.html', '.js', '.css'].includes(extension);
+    response.writeHead(200, {
+      'Content-Type': mime[extension] || 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Cache-Control': isHtmlOrCode ? 'no-cache' : 'public, max-age=86400',
+    });
     response.end(data);
   });
 }
 
 const io = new Server(server, {
   path: '/api/socket.io',
-  cors: { origin: true, credentials: true },
+  cors: {
+    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+    credentials: true,
+  },
 });
 
 function compactState(state) {
