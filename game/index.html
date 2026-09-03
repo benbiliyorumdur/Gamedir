@@ -120,7 +120,7 @@
         }
 
         body {
-            min-height: 100vh;
+            min-height: 100dvh;
             padding: 12px 10px 18px;
             display: flex;
             align-items: center;
@@ -201,9 +201,26 @@
 
         .modal-content {
             width: min(94vw, 440px);
-            max-height: min(90vh, 840px);
+            max-width: calc(100vw - 24px);
+            min-width: 0;
+            max-height: min(90dvh, 840px);
+            overflow-x: hidden;
             overflow-y: auto;
             margin: auto;
+        }
+
+        #modalOverlay {
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+        }
+
+        .modal-content > * { min-width: 0; }
+        .modal-tab {
+            max-width: calc(100% - 48px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         #shopModal.modal-content,
@@ -439,16 +456,45 @@
             }
 
             .modal-content {
-                width: min(96vw, 420px) !important;
-                max-height: calc(100vh - 1rem);
+                width: 100% !important;
+                max-width: 100% !important;
+                max-height: calc(100dvh - 1rem);
+                margin: auto;
             }
 
             #shopModal.modal-content,
             #cosmeticsModal.modal-content {
-                width: min(96vw, 860px) !important;
-                max-width: min(96vw, 860px) !important;
+                width: 100% !important;
+                max-width: 100% !important;
             }
 
+            .modal-tab { left: -2px; top: -14px; max-width: calc(100% - 48px); }
+            .modal-content > button.absolute { right: 8px !important; top: 8px !important; }
+            .modal-content .tab-btn { flex: 0 0 auto; }
+            #cosmeticsModal > div.mt-4 > div:first-child,
+            #shopModal > div.mt-4 > div:first-child { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+
+
+        @media (max-height: 620px) and (orientation: landscape) {
+            body { align-items: flex-start; padding: 6px 10px 10px; }
+            header { top: 4px !important; }
+            main { max-width: min(56vw, 520px) !important; padding-top: 58px !important; }
+            main > div:first-child { margin-bottom: 4px !important; }
+            main > div:first-child h1 { font-size: 2.5rem !important; }
+            main > input { height: 40px !important; margin-bottom: 5px !important; }
+            #active-pet-btn { height: 60px !important; min-height: 60px !important; margin-bottom: 6px !important; }
+            #active-pet-btn > div:first-child { width: 48px !important; height: 48px !important; }
+            #play-btn { height: 62px !important; min-height: 62px !important; }
+            #play-btn span { font-size: 2rem !important; }
+            main > .grid { margin-top: 6px !important; gap: 5px !important; }
+            main > .grid button { min-height: 56px !important; padding: 4px !important; }
+            main > .grid button i { font-size: 1.15rem !important; margin: 0 !important; }
+            main > .grid button span { font-size: 9px !important; }
+            main > div.flex.lg\:hidden { margin-top: 6px !important; }
+            main > div.flex.lg\:hidden button { min-height: 30px !important; padding: 4px 8px !important; }
+            #modalOverlay { align-items: flex-start; padding: 8px; }
+            .modal-content { max-height: calc(100dvh - 16px); }
+        }
         }
 
         /* Background Canvas */
@@ -2432,6 +2478,26 @@
         function drawLiveMob(ctx, mob, x, y, scale) {
             const radius = Math.max(18, Number(mob.radius) || 40) * scale;
             ctx.save(); ctx.translate(x, y); ctx.rotate(Number(mob.angle) || 0);
+            const shape = mob.shape === 'spider' ? 'spider' : mob.shape === 'scorpion' ? 'scorpion' : mob.shape;
+            const spriteSizeKey = shape === 'spider' ? 46 : shape === 'scorpion' ? 40 : Math.round(Number(mob.radius) || 40);
+            const sprite = getLoadedImage(`mobs/${shape}-${spriteSizeKey}.png`);
+            if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+                const spriteSize = radius * 2.55;
+                ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
+                ctx.restore();
+                return;
+            }
+            const body = shape === 'wolf' ? getLoadedImage('mobassets/kurt_govde.png') : shape === 'bear' ? getLoadedImage('mobassets/bear_govde.png') : null;
+            const head = shape === 'wolf' ? getLoadedImage('mobassets/kurt_kafa.png') : shape === 'bear' ? getLoadedImage('mobassets/bear_kafa.png') : null;
+            const tail = shape === 'wolf' ? getLoadedImage('mobassets/kurt_kuyruk.png') : shape === 'bear' ? getLoadedImage('mobassets/bear_kuyruk.png') : null;
+            if (body && head && body.complete && head.complete && body.naturalWidth > 0 && head.naturalWidth > 0) {
+                const bodySize = radius * 2.25;
+                if (tail && tail.complete && tail.naturalWidth > 0) ctx.drawImage(tail, -radius * .65, radius * .35, radius * 1.1, radius * 1.1);
+                ctx.drawImage(body, -bodySize / 2, -bodySize / 2, bodySize, bodySize);
+                ctx.drawImage(head, radius * .05, -radius * .95, radius * 1.45, radius * 1.45);
+                ctx.restore();
+                return;
+            }
             ctx.fillStyle = mob.color || '#6b4932'; ctx.strokeStyle = mob.outline || '#28170d'; ctx.lineWidth = Math.max(2, 5 * scale);
             ctx.beginPath();
             if (mob.shape === 'spider') { ctx.ellipse(0, 0, radius * 1.2, radius * .72, 0, 0, Math.PI * 2); }
@@ -2451,7 +2517,7 @@
             const normBiome = resource.biome === 'winter' || resource.biome === 'snow' ? 'winter' : resource.biome === 'desert' ? 'desert' : resource.biome === 'lava' ? 'darkforest' : 'forest';
             const assetName = resource.type === 'gold' ? 'asset/gold.png' : resource.type === 'apple' ? 'asset/apple.png' : resource.type === 'bush' ? 'asset/bush.png' : resource.type === 'mushroom' ? 'asset/mushroom.png' : resource.type === 'crystal' ? 'asset/crystal.png' : resource.type === 'hive' ? 'asset/hive.png' : resource.type === 'wood' ? (normBiome === 'forest' ? 'asset/tree-forest.png' : normBiome === 'darkforest' ? 'asset/tree-darkforest.png' : `resourceasset/${normBiome}wood.png`) : (normBiome === 'forest' ? 'asset/rock-forest.png' : normBiome === 'darkforest' ? 'asset/rock-darkforest.png' : `resourceasset/${normBiome}stone.png`);
             const image = getLoadedImage(assetName);
-            const size = Math.max(22, Math.min(82, (resource.type === 'gold' ? 58 : 76) * zoom));
+            const size = resource.type === 'gold' ? 58 : 76;
             if (image && image.complete && image.naturalWidth > 0) ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
             else { ctx.fillStyle = resource.type === 'gold' ? '#f4c542' : resource.type === 'stone' ? '#89979c' : '#3d9146'; ctx.beginPath(); ctx.arc(x, y, size * .28, 0, Math.PI * 2); ctx.fill(); }
         }
@@ -2481,7 +2547,7 @@
             const sky = bgCtx.createLinearGradient(0, 0, 0, bgH);
             sky.addColorStop(0, '#183542'); sky.addColorStop(.48, '#2b5938'); sky.addColorStop(1, '#101b16');
             bgCtx.fillStyle = sky; bgCtx.fillRect(0, 0, bgW, bgH);
-            bgCtx.save(); bgCtx.translate(bgW / 2 - liveCamera.x * zoom, bgH / 2 - liveCamera.y * zoom);
+            bgCtx.save(); bgCtx.translate(bgW / 2 - liveCamera.x * zoom, bgH / 2 - liveCamera.y * zoom); bgCtx.scale(zoom, zoom);
             bgCtx.globalAlpha = .62;
             const worldLeft = Math.floor((liveCamera.x - bgW / zoom) / 360) - 1;
             const worldRight = Math.ceil((liveCamera.x + bgW / zoom) / 360) + 1;
@@ -2497,8 +2563,7 @@
             for (let grid = worldLeft * 360; grid <= worldRight * 360; grid += 180) { bgCtx.beginPath(); bgCtx.moveTo(grid, worldTop * 360); bgCtx.lineTo(grid, worldBottom * 360); bgCtx.stroke(); }
             for (let grid = worldTop * 360; grid <= worldBottom * 360; grid += 180) { bgCtx.beginPath(); bgCtx.moveTo(worldLeft * 360, grid); bgCtx.lineTo(worldRight * 360, grid); bgCtx.stroke(); }
             for (const resource of liveResources.values()) {
-                const point = toScreen(resource.x, resource.y);
-                if (point.x > -100 && point.x < bgW + 100 && point.y > -100 && point.y < bgH + 100) drawLiveResource(bgCtx, resource, point.x, point.y, zoom);
+                if (resource.x > liveCamera.x - bgW / zoom - 120 && resource.x < liveCamera.x + bgW / zoom + 120 && resource.y > liveCamera.y - bgH / zoom - 120 && resource.y < liveCamera.y + bgH / zoom + 120) drawLiveResource(bgCtx, resource, resource.x, resource.y, zoom);
             }
             for (const building of liveBuildings.values()) { bgCtx.fillStyle = '#75502d'; bgCtx.strokeStyle = '#23160d'; bgCtx.lineWidth = 5; bgCtx.beginPath(); bgCtx.arc(Number(building.x) || 0, Number(building.y) || 0, 35, 0, Math.PI * 2); bgCtx.fill(); bgCtx.stroke(); }
             bgCtx.restore();
