@@ -800,6 +800,15 @@ function relayToOthers(socket, event, payload) {
   socket.broadcast.emit(event, payload);
 }
 
+let mobBroadcastTick = 0;
+function broadcastMobStates(changed) {
+  mobBroadcastTick++;
+  for (const [id, client] of io.sockets.sockets) {
+    if (client.data.isSpectator && mobBroadcastTick % 3 !== 0) continue;
+    client.volatile.emit('mob_states', changed);
+  }
+}
+
 const MAX_MOBS = 32;
 const MOB_RADIUS = 36;
 const MOB_AGGRO_RANGE = 420;
@@ -864,6 +873,37 @@ function publicMob(mob) {
     isBoss: false,
   };
 }
+
+const PREVIEW_RESOURCE_DEFS = {
+  forest: [['wood', 30], ['wood', 16], ['stone', 20], ['stone', 10], ['gold', 5], ['gold', 3], ['apple', 10], ['bush', 14], ['mushroom', 8], ['crystal', 4], ['hive', 3]],
+  winter: [['wood', 26], ['wood', 13], ['stone', 24], ['stone', 12], ['gold', 6], ['gold', 3], ['crystal', 5], ['bush', 8]],
+  desert: [['wood', 16], ['wood', 9], ['stone', 28], ['stone', 14], ['gold', 8], ['gold', 4], ['bush', 10]],
+  lava: [['wood', 28], ['wood', 14], ['stone', 20], ['stone', 10], ['gold', 6], ['gold', 3], ['bush', 12]],
+};
+function previewBiome(x, y) {
+  const nx = x / 7200, ny = y / 7200;
+  if (Math.abs(nx) < 0.65 && Math.abs(ny) < 0.65) return 'forest';
+  if (Math.abs(ny) >= Math.abs(nx)) return ny < 0 ? 'winter' : 'lava';
+  return nx > 0 ? 'desert' : 'lava';
+}
+function previewResources() {
+  const rng = _makeMulberry32(0x4F524553);
+  const resources = [];
+  const radius = 7200 * 0.90 * 0.98;
+  for (let i = 0; i < 420; i++) {
+    const x = (rng() * 2 - 1) * radius;
+    const y = (rng() * 2 - 1) * radius;
+    const biome = previewBiome(x, y);
+    const defs = PREVIEW_RESOURCE_DEFS[biome];
+    const total = defs.reduce((sum, entry) => sum + entry[1], 0);
+    let roll = rng() * total;
+    let type = defs[0][0];
+    for (const [candidate, weight] of defs) { roll -= weight; if (roll <= 0) { type = candidate; break; } }
+    resources.push({ id: `resource-${i}`, x: Math.round(x), y: Math.round(y), type, biome });
+  }
+  return resources;
+}
+const previewWorldResources = previewResources();
 
 function findSafeMobSpawn() {
   const maxCoord = 3600;
@@ -1139,7 +1179,7 @@ setInterval(() => {
 
     changed.push(publicMob(mob));
   }
-  if (changed.length) io.emit('mob_states', changed);
+  if (changed.length) broadcastMobStates(changed);
 }, 100);
 
 setInterval(broadcastMobIds, 2000);
@@ -1202,6 +1242,7 @@ io.on('connection', (socket) => {
       worldSeed,
       resHp: {},
       mobs: [...mobs.values()].map(publicMob),
+      resources: previewWorldResources,
       airdrops: [...airdrops.values()].map(publicAirdrop),
       bountyId: currentBountyId,
       isHost: false,

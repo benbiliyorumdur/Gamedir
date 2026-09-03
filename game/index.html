@@ -2383,6 +2383,7 @@
         const livePlayers = new Map();
         const liveMobs = new Map();
         const liveBuildings = new Map();
+        const liveResources = new Map();
         let liveWorldSeed = 0;
         let liveSocket = null;
         let liveCamera = { x: 0, y: 0 };
@@ -2400,10 +2401,11 @@
             liveSocket = io({ path: '/api/socket.io', transports: ['websocket', 'polling'] });
             liveSocket.on('welcome', data => {
                 liveWorldSeed = Number(data.worldSeed) || 0;
-                livePlayers.clear(); liveMobs.clear(); liveBuildings.clear();
+                livePlayers.clear(); liveMobs.clear(); liveBuildings.clear(); liveResources.clear();
                 Object.entries(data.players || {}).forEach(([id, player]) => mergeLiveState(livePlayers, { ...player, id }));
                 (data.mobs || []).forEach(mob => mergeLiveState(liveMobs, mob));
                 Object.entries(data.buildings || {}).forEach(([id, building]) => liveBuildings.set(id, building));
+                (data.resources || []).forEach(resource => liveResources.set(resource.id, resource));
             });
             liveSocket.on('players', states => Object.entries(states || {}).forEach(([id, player]) => mergeLiveState(livePlayers, { ...player, id })));
             liveSocket.on('player_join', ({ id, state }) => mergeLiveState(livePlayers, { ...state, id }));
@@ -2443,6 +2445,15 @@
             ctx.fillStyle = mob.eyes || '#ffcc66';
             ctx.beginPath(); ctx.arc(-radius * .3, -radius * .2, Math.max(2, radius * .13), 0, Math.PI * 2); ctx.arc(radius * .3, -radius * .2, Math.max(2, radius * .13), 0, Math.PI * 2); ctx.fill();
             ctx.restore();
+        }
+
+        function drawLiveResource(ctx, resource, x, y, zoom) {
+            const normBiome = resource.biome === 'winter' || resource.biome === 'snow' ? 'winter' : resource.biome === 'desert' ? 'desert' : resource.biome === 'lava' ? 'darkforest' : 'forest';
+            const assetName = resource.type === 'gold' ? 'asset/gold.png' : resource.type === 'apple' ? 'asset/apple.png' : resource.type === 'bush' ? 'asset/bush.png' : resource.type === 'mushroom' ? 'asset/mushroom.png' : resource.type === 'crystal' ? 'asset/crystal.png' : resource.type === 'hive' ? 'asset/hive.png' : resource.type === 'wood' ? (normBiome === 'forest' ? 'asset/tree-forest.png' : normBiome === 'darkforest' ? 'asset/tree-darkforest.png' : `resourceasset/${normBiome}wood.png`) : (normBiome === 'forest' ? 'asset/rock-forest.png' : normBiome === 'darkforest' ? 'asset/rock-darkforest.png' : `resourceasset/${normBiome}stone.png`);
+            const image = getLoadedImage(assetName);
+            const size = Math.max(22, Math.min(82, (resource.type === 'gold' ? 58 : 76) * zoom));
+            if (image && image.complete && image.naturalWidth > 0) ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+            else { ctx.fillStyle = resource.type === 'gold' ? '#f4c542' : resource.type === 'stone' ? '#89979c' : '#3d9146'; ctx.beginPath(); ctx.arc(x, y, size * .28, 0, Math.PI * 2); ctx.fill(); }
         }
 
         function drawLiveWorld() {
@@ -2485,20 +2496,10 @@
             bgCtx.strokeStyle = 'rgba(180,225,140,.10)'; bgCtx.lineWidth = 3;
             for (let grid = worldLeft * 360; grid <= worldRight * 360; grid += 180) { bgCtx.beginPath(); bgCtx.moveTo(grid, worldTop * 360); bgCtx.lineTo(grid, worldBottom * 360); bgCtx.stroke(); }
             for (let grid = worldTop * 360; grid <= worldBottom * 360; grid += 180) { bgCtx.beginPath(); bgCtx.moveTo(worldLeft * 360, grid); bgCtx.lineTo(worldRight * 360, grid); bgCtx.stroke(); }
-            const propHash = value => { const n = Math.sin(value * 12.9898 + liveWorldSeed) * 43758.5453; return n - Math.floor(n); };
-            for (let gx = worldLeft * 360; gx <= worldRight * 360; gx += 360) { for (let gy = worldTop * 360; gy <= worldBottom * 360; gy += 360) {
-                const h = propHash(gx * .013 + gy * .017);
-                const px = gx + 55 + h * 240, py = gy + 62 + propHash(gx * .019 - gy * .011) * 235;
-                if (h < .68) {
-                    bgCtx.fillStyle = 'rgba(12,29,16,.38)'; bgCtx.beginPath(); bgCtx.ellipse(px, py + 34, 30, 11, 0, 0, Math.PI * 2); bgCtx.fill();
-                    bgCtx.fillStyle = h < .32 ? '#6d4927' : '#4f3a22'; bgCtx.fillRect(px - 5, py + 4, 10, 34);
-                    bgCtx.fillStyle = h < .32 ? '#2e7338' : '#3f8b43'; bgCtx.beginPath(); bgCtx.arc(px, py - 5, 29, 0, Math.PI * 2); bgCtx.arc(px - 20, py + 8, 22, 0, Math.PI * 2); bgCtx.arc(px + 20, py + 8, 22, 0, Math.PI * 2); bgCtx.fill();
-                    bgCtx.fillStyle = 'rgba(156,225,104,.18)'; bgCtx.beginPath(); bgCtx.arc(px - 9, py - 17, 11, 0, Math.PI * 2); bgCtx.fill();
-                } else {
-                    bgCtx.fillStyle = 'rgba(10,22,14,.35)'; bgCtx.beginPath(); bgCtx.ellipse(px, py + 14, 25, 9, 0, 0, Math.PI * 2); bgCtx.fill();
-                    bgCtx.fillStyle = '#65705a'; bgCtx.strokeStyle = '#27382b'; bgCtx.lineWidth = 3; bgCtx.beginPath(); bgCtx.ellipse(px, py, 24, 15, h * 2, 0, Math.PI * 2); bgCtx.fill(); bgCtx.stroke();
-                }
-            }}
+            for (const resource of liveResources.values()) {
+                const point = toScreen(resource.x, resource.y);
+                if (point.x > -100 && point.x < bgW + 100 && point.y > -100 && point.y < bgH + 100) drawLiveResource(bgCtx, resource, point.x, point.y, zoom);
+            }
             for (const building of liveBuildings.values()) { bgCtx.fillStyle = '#75502d'; bgCtx.strokeStyle = '#23160d'; bgCtx.lineWidth = 5; bgCtx.beginPath(); bgCtx.arc(Number(building.x) || 0, Number(building.y) || 0, 35, 0, Math.PI * 2); bgCtx.fill(); bgCtx.stroke(); }
             bgCtx.restore();
 
