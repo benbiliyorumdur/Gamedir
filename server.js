@@ -784,6 +784,7 @@ function compactState(state) {
     color: state.color || '#8B5E3A', team: state.team || '', clanId: state.clanId || '', clanTag: state.clanTag || '', acc: state.acc || {}, vx: state.vx || 0, vy: state.vy || 0,
     bx: typeof state.buildX === 'number' ? state.buildX : null, by: typeof state.buildY === 'number' ? state.buildY : null,
     sq: state.stateSeq || 0, tm: state.stateAt || Date.now(),
+    trappedBy: state.trappedBy || null, trappedX: state.trappedX ?? null, trappedY: state.trappedY ?? null,
   };
 }
 
@@ -1399,7 +1400,7 @@ io.on('connection', (socket) => {
 
     if (player.trappedBy) {
       const b = buildings.get(player.trappedBy);
-      if (b && (b.hp ?? 100) > 0) {
+      if (b && (b.hp ?? 100) > 0 && Date.now() < (player.trappedUntil || 0)) {
         data.vx = 0;
         data.vy = 0;
         data.x = player.trappedX ?? data.x;
@@ -1408,12 +1409,29 @@ io.on('connection', (socket) => {
         acceptedY = Number(data.y) || prevY;
       } else {
         player.trappedBy = null;
+        player.trappedX = null;
+        player.trappedY = null;
+        player.trappedUntil = 0;
       }
     }
     for (const key of ['x', 'y', 'angle', 'vx', 'vy', 'isAttacking', 'weapon', 'axeTier', 'swordTier', 'team', 'color', 'skin', 'acc', 'buildX', 'buildY', 'maxHp', 'score', 'sc', 'kills', 'gold', 'wood', 'stone', 'apples', 'xp', 'rankId']) {
       if (key === 'x' && Number.isFinite(acceptedX)) player.x = acceptedX;
       else if (key === 'y' && Number.isFinite(acceptedY)) player.y = acceptedY;
       else if (data[key] !== undefined) player[key] = data[key];
+    }
+    if (!player.trappedBy) {
+      for (const [otherId, other] of players) {
+        if (otherId === socket.id || !other || other.hp <= 0) continue;
+        const dx = player.x - (Number(other.x) || 0);
+        const dy = player.y - (Number(other.y) || 0);
+        const minDistance = 68;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared >= minDistance * minDistance) continue;
+        const distance = Math.sqrt(distanceSquared) || 0.01;
+        player.x += (dx / distance) * (minDistance - distance);
+        player.y += (dy / distance) * (minDistance - distance);
+        break;
+      }
     }
     const incomingScore = Number(data.score ?? data.sc ?? player.score ?? 0) || 0;
     player.score = Math.max(player.score || 0, incomingScore);
@@ -1575,16 +1593,20 @@ io.on('connection', (socket) => {
   socket.on('trap_touch', (data = {}) => {
     const owner = players.get(socket.id);
     const target = players.get(data.victimId);
+    const building = buildings.get(String(data.buildingId || ''));
     if (!target || target.hp <= 0) return;
+    if (!building || building.type !== 6 || (building.hp ?? 0) <= 0) return;
+    if (building.ownerId === data.victimId) return;
+    if (building.ownerId !== socket.id && data.victimId !== socket.id) return;
     if (owner && ((owner.clanId && owner.clanId === target.clanId) || (owner.team && target.team && owner.team === target.team))) return;
-    target.trappedBy = data.buildingId;
+    target.trappedBy = building.id;
     target.trappedX = target.x;
     target.trappedY = target.y;
     target.trappedUntil = Date.now() + 4000;
     target.vx = 0;
     target.vy = 0;
-    io.to(data.victimId).emit('trap_caught', { buildingId: data.buildingId });
-    io.emit('trap_triggered', { buildingId: data.buildingId, victimId: data.victimId, x: target.x, y: target.y });
+    io.to(data.victimId).emit('trap_caught', { buildingId: building.id, x: target.trappedX, y: target.trappedY });
+    io.emit('trap_triggered', { buildingId: building.id, victimId: data.victimId, x: target.x, y: target.y });
   });
 
   socket.on('mob_trap_hit', (data = {}) => {
@@ -1605,7 +1627,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('trap_owner_push', (data = {}) => {
-    if (data.victimId) io.to(data.victimId).emit('trap_victim_push', data);
+    const owner = players.get(socket.id);
+    const target = players.get(data.victimId);
+    if (!owner || !target || !target.trappedBy || target.hp <= 0) return;
+    const trap = buildings.get(target.trappedBy);
+    if (!trap || trap.ownerId !== socket.id || (trap.hp ?? 0) <= 0 || Date.now() >= (target.trappedUntil || 0)) return;
+    const dx = Number(data.dx);
+    const dy = Number(data.dy);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    const length = Math.hypot(dx, dy) || 1;
+    const step = Math.min(3, Math.max(0, Number(data.step) || 1));
+    target.trappedX += (dx / length) * step;
+    target.trappedY += (dy / length) * step;
+    target.x = target.trappedX;
+    target.y = target.trappedY;
+    io.to(data.victimId).emit('trap_victim_push', { dx: (dx / length) * step, dy: (dy / length) * step });
+    io.emit('players', { [target.id]: compactState(target) });
   });
 
   socket.on('train_board', () => {
@@ -1637,10 +1674,6 @@ io.on('connection', (socket) => {
     mobs.delete(mob.id);
     io.emit('mob_dead', { id: mob.id });
     socket.emit('mob_kill_reward', { xp: mob.xpReward, gold: mob.goldReward, score: Math.round(mob.xpReward * 0.75 + mob.goldReward * 3), typeName: mob.typeName });
-  });
-
-  socket.on('mob_trap_hit', (data = {}) => {
-    relayToOthers(socket, 'mob_trapped', data);
   });
 
   socket.on('chat', (data = {}) => io.emit('chat', { name: players.get(socket.id)?.name || 'Oyuncu', msg: String(data.msg || '').slice(0, 200), id: socket.id }));
