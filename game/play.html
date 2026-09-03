@@ -2113,6 +2113,7 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
 // Set when build-upgrade panel opens so iOS visualViewport.resize events
 // fired by the panel animation cannot wipe the canvas.
 let _resizePauseUntil = 0;
+let _isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 900;
 
 let _lastCanvasW = 0, _lastCanvasH = 0;
 function resize() {
@@ -2205,7 +2206,6 @@ const _BASE = window.location.pathname.replace(/\/play\.html$/, '/') || '/';
 // mod: 'online' = çok oyunculu (varsayılan), 'offline' = tek oyunculu
 const _GAME_MODE = urlParams.get('mode') === 'offline' ? 'offline' : 'online';
 
-let _isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 900;
 const _lowPowerDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || (navigator.deviceMemory && navigator.deviceMemory <= 4) || /Android\s+[1-7]|iPhone|iPad/i.test(navigator.userAgent);
 let ZOOM = _isMobile ? 0.58 : 0.68;
 let camX = 0, camY = 0, _camReady = false;
