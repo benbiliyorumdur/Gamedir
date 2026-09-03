@@ -436,7 +436,7 @@ body>iframe[style]{
   display:none !important;
   content:none !important;
 }
-@media (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) and (min-width: 901px) {
   .joy-zone { display: none !important; pointer-events: none !important; }
 }
 #joy-left{left:max(env(safe-area-inset-left,0px),12px);bottom:max(env(safe-area-inset-bottom,0px),14px);}
@@ -6172,6 +6172,8 @@ function setupJoy(zoneId, stickId, isMove) {
   };
   zone.addEventListener('touchend', end);
   zone.addEventListener('touchcancel', end);
+  window.addEventListener('touchend', end, { passive: false });
+  window.addEventListener('touchcancel', end, { passive: false });
 }
 setupJoy('joy-left', 'stick-left', true);
 setupJoy('joy-right', 'stick-right', false);
