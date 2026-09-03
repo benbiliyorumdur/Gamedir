@@ -1775,6 +1775,10 @@ io.on('connection', (socket) => {
     const id = data.id || `${socket.id}-${Date.now()}`;
     const owner = players.get(socket.id);
     const building = { ...data, ownerId: socket.id, ownerClanId: owner?.clanId || '' };
+    if (bType === 6) {
+      building.maxHp = Math.max(1800, Number(data.maxHp) || 0);
+      building.hp = Math.min(building.maxHp, Math.max(building.maxHp * 0.9, Number(data.hp) || 0));
+    }
     buildings.set(id, building);
     socket.emit('build_ack', { clientId: data.id, serverId: id });
     io.emit('build', { id, building: { ...building } });
@@ -1794,6 +1798,10 @@ io.on('connection', (socket) => {
         return;
       }
       const building = { ...data.building, ownerId: socket.id, ownerClanId: players.get(socket.id)?.clanId || '' };
+      if (bType === 6) {
+        building.maxHp = Math.max(1800, Number(data.building?.maxHp) || 0);
+        building.hp = Math.min(building.maxHp, Math.max(building.maxHp * 0.9, Number(data.building?.hp) || 0));
+      }
       buildings.set(data.id, building);
       relayToOthers(socket, 'build', { id: data.id, building });
     }
@@ -1809,7 +1817,8 @@ io.on('connection', (socket) => {
   socket.on('building_hit', ({ id, dmg } = {}) => {
     const building = buildings.get(id);
     if (!building) return;
-    building.hp = Math.max(0, (building.hp ?? building.maxHp ?? 100) - Math.max(1, Math.min(120, Number(dmg) || 1)));
+    const maxDamage = Number(building.type) === 6 ? 32 : 120;
+    building.hp = Math.max(0, (building.hp ?? building.maxHp ?? 100) - Math.max(1, Math.min(maxDamage, Number(dmg) || 1)));
     io.emit('build_hp_update', { id, hp: building.hp });
     if (building.hp <= 0) {
       buildings.delete(id);

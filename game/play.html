@@ -1490,6 +1490,30 @@ body>iframe[style]{
 .bp-tier-reward{flex:1;font-size:10px;font-weight:700;color:#ccc;}
 .bp-claim-btn{background:linear-gradient(135deg,#9960ff,#5530cc);border:none;color:#fff;border-radius:6px;padding:3px 9px;font-size:9px;font-weight:800;cursor:pointer;flex-shrink:0;font-family:inherit;}
 .bp-claim-btn:disabled{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.22);cursor:default;}
+/* ===== RESPONSIVE SURVIVAL HUD ===== */
+:root{--hud-surface:rgba(12,20,25,.88);--hud-line:rgba(255,255,255,.16);--hud-green:#8fdb58;--hud-gold:#ffd452;--hud-radius:10px;--hud-gap:clamp(4px,.65vw,8px);}
+button,.inv-slot,#apple-btn,#back-btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+#ui-top{padding:calc(env(safe-area-inset-top,0px) + clamp(6px,1vw,12px)) calc(env(safe-area-inset-right,0px) + clamp(6px,1vw,12px)) 0 calc(env(safe-area-inset-left,0px) + clamp(6px,1vw,12px));}
+#left-stats-stack{top:calc(env(safe-area-inset-top,0px) + clamp(6px,1vw,12px));left:calc(env(safe-area-inset-left,0px) + clamp(6px,1vw,12px));gap:var(--hud-gap)!important;max-width:calc(100vw - 16px);}
+#resource-hud,#res-panel,#fps-display,#ping-display,#back-btn,#ui-bottom .inventory,#lb-panel,#minimap{background:var(--hud-surface);border:1px solid var(--hud-line);box-shadow:0 5px 18px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+#resource-hud{border-radius:var(--hud-radius);gap:var(--hud-gap);padding:5px;}
+.res-item{min-width:clamp(42px,5vw,66px);padding:4px 7px;border-radius:7px;background:rgba(255,255,255,.055);}
+#ui-bottom{bottom:calc(env(safe-area-inset-bottom,0px) + clamp(6px,1.2vh,14px));width:min(520px,calc(100vw - clamp(112px,25vw,300px)));min-width:0;gap:5px;}
+#hp-wrap,#ui-bottom .age-container{width:100%;}
+#hp-bar-bg{height:clamp(16px,2.5vh,23px);}
+.inventory{gap:clamp(3px,.65vw,7px)!important;padding:clamp(5px,1vw,9px)!important;border-radius:var(--hud-radius)!important;max-width:100%!important;width:100%;}
+.inv-slot{width:clamp(42px,5vw,58px);height:clamp(42px,5vw,58px);border-radius:8px;border-width:2px;}
+.inv-icon-canvas{width:clamp(25px,3.2vw,36px);height:clamp(25px,3.2vw,36px);}
+#minimap{border-radius:var(--hud-radius);overflow:hidden;}
+#lb-panel{border-radius:var(--hud-radius);overflow:hidden;}
+.joy-zone{width:clamp(106px,17vw,140px);height:clamp(106px,17vw,140px);}
+#joy-left{left:calc(env(safe-area-inset-left,0px) + clamp(8px,2vw,24px));bottom:calc(env(safe-area-inset-bottom,0px) + clamp(8px,2vh,20px));}
+#joy-right{right:calc(env(safe-area-inset-right,0px) + clamp(8px,2vw,24px));bottom:calc(env(safe-area-inset-bottom,0px) + clamp(8px,2vh,20px));}
+#dash-btn{width:clamp(48px,7vw,68px)!important;height:clamp(48px,7vw,68px)!important;}
+@media (max-width:760px){#left-stats-stack{max-width:calc(100vw - 12px);}#resource-hud{max-width:calc(100vw - 12px);overflow-x:auto;scrollbar-width:none;}#resource-hud::-webkit-scrollbar{display:none;}.res-item{min-width:46px;padding:3px 5px;gap:3px;}.res-value,.res-count{font-size:11px;}#fps-display,#ping-display{display:none!important;}#ui-bottom{width:min(430px,calc(100vw - 116px));}#ui-bottom .inventory{overflow-x:auto;justify-content:flex-start;}#back-btn{padding:7px 10px;font-size:10px;}#lb-panel{right:6px!important;top:calc(env(safe-area-inset-top,0px) + 48px)!important;width:min(180px,42vw)!important;}#minimap{width:clamp(70px,20vw,100px)!important;height:clamp(70px,20vw,100px)!important;}}
+@media (max-width:520px) and (orientation:portrait){#ui-bottom{width:calc(100vw - 20px);bottom:calc(env(safe-area-inset-bottom,0px) + 6px);}#ui-bottom .inventory{max-width:calc(100vw - 20px)!important;}.inv-slot{width:42px;height:42px;}.inv-icon-canvas{width:26px;height:26px;}#hp-text{font-size:11px;min-width:48px;}.joy-zone{width:108px;height:108px;}#dash-btn{bottom:calc(env(safe-area-inset-bottom,0px) + 116px)!important;}#res-panel{top:calc(env(safe-area-inset-top,0px) + 52px)!important;left:6px!important;transform:scale(.9);transform-origin:top left;}}
+@media (max-height:560px) and (orientation:landscape){#ui-bottom{bottom:4px;width:min(480px,calc(100vw - 230px));gap:2px;}#hp-bar-bg{height:14px;}.age-bar{height:7px;}.inventory{padding:4px!important;}.inv-slot{width:38px;height:38px;}.inv-icon-canvas{width:24px;height:24px;}.joy-zone{width:92px;height:92px;}#joy-left,#joy-right{bottom:4px;}#minimap{display:none;}#lb-panel{top:4px!important;right:4px!important;max-height:calc(100vh - 8px)!important;}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
 </style>
 <script>
 function drawSkinEyesOverlay(c, R, sk, fl) {
@@ -5744,7 +5768,7 @@ function tryPlaceBuilding() {
     return;
   }
 
-  const costs = { 3:[20,5,150], 4:[40,20,100], 5:[10,20,50], 6:[30,10,80], 7:[60,40,200], 8:[30,0,300], 9:[80,60,400], 10:[25,0,300] };
+  const costs = { 3:[20,5,150], 4:[40,20,100], 5:[10,20,50], 6:[30,10,1800], 7:[60,40,200], 8:[30,0,300], 9:[80,60,400], 10:[25,0,300] };
   const radii = { 3:34, 4:44, 5:22, 6:26, 7:32, 8:20, 9:52, 10:28 };
   const [cW, cS, mHp] = costs[player.weapon] || [0,0,0];
 
@@ -6905,7 +6929,7 @@ function checkHits() {
 
       // HIT confirmed — deal weapon damage to building
       b.lastHitSwingId = _swingId;
-      const bDmg = Math.round(dmg * 0.6); // buildings tougher than enemies
+      const bDmg = Math.round(dmg * (b.type === 6 ? 0.22 : 0.6)); // traps are durable, other buildings remain responsive
       b.hp = Math.max(0, b.hp - bDmg);
       b.shake = 8; b.hitTimer = 15;
       spawnBuildingDebris(b.x, b.y, b.type);
