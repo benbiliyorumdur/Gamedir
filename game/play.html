@@ -14650,7 +14650,6 @@ function initMultiplayer() {
         shake: 0,
         hitFlash: 0
       });
-      showToast(`Bir sandık düştü. Tür: ${ad.tier === 2 ? 'elmas' : 'altın'}.`, 5500, '#ffd700');
       playSound(660, 0.2, 'triangle', 0.35);
       setTimeout(() => playSound(880, 0.2, 'sine', 0.3), 150);
     }
@@ -14675,7 +14674,6 @@ function initMultiplayer() {
     spawnGoldBurst(x, y);
     spawnGoldBurst(x, y);
     floatingTexts.push({ x, y: y - 40, text: `🎉 +${gold} 🪙 SANDIK AÇILDI!`, alpha: 1, life: 75, color: '#ffd700', big: true });
-    showToast(`${openerName} sandığı açtı ve ${gold} altın aldı.`, 4500, '#ffd700');
     playSound(1050, 0.22, 'triangle', 0.4);
   });
 
