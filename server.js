@@ -973,7 +973,8 @@ function broadcastMobIds() {
 
 // The server owns mob positions so every connected player renders the same world.
 setInterval(() => {
-  if (players.size === 0) return;
+  const hasSpectators = [...io.sockets.sockets.values()].some(client => client.data.isSpectator);
+  if (players.size === 0 && !hasSpectators) return;
   ensureMobs();
   const changed = [];
   const now = Date.now();
@@ -1192,6 +1193,7 @@ io.on('connection', (socket) => {
 
   socket.on('spectate', () => {
     socket.data.isSpectator = true;
+    ensureMobs();
     const currentPlayers = Object.fromEntries([...players].map(([id, player]) => [id, compactState(player)]));
     socket.emit('welcome', {
       id: socket.id,

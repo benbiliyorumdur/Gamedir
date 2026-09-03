@@ -417,9 +417,22 @@
 
         @media (max-height: 620px) and (orientation: landscape) {
             body { align-items: flex-start; padding-top: 6px; padding-bottom: 10px; }
-            main { padding-top: 78px !important; }
+            main { padding-top: 52px !important; max-width: 360px !important; }
             header { top: 4px !important; }
             .modal-content { max-height: calc(100dvh - 12px); }
+            main > div:first-child { margin-bottom: 2px !important; }
+            main > div:first-child h1 { font-size: 2.35rem !important; }
+            main > input { height: 38px !important; margin-bottom: 4px !important; }
+            #active-pet-btn { height: 58px !important; min-height: 58px !important; margin-bottom: 5px !important; }
+            #active-pet-btn > div:first-child { width: 48px !important; height: 48px !important; }
+            #play-btn { height: 58px !important; min-height: 58px !important; }
+            #play-btn span { font-size: 2rem !important; }
+            main > .grid { margin-top: 6px !important; gap: 4px !important; }
+            main > .grid button { min-height: 56px !important; padding: 4px !important; }
+            main > .grid button i { font-size: 1.15rem !important; margin: 0 !important; }
+            main > .grid button span { font-size: 9px !important; }
+            main > div.flex.lg\:hidden { margin-top: 5px !important; }
+            main > div.flex.lg\:hidden button { min-height: 30px !important; padding: 4px 8px !important; }
         }
             #modalOverlay {
                 padding: 0.75rem;
@@ -447,12 +460,25 @@
             z-index: 0;
             pointer-events: none;
         }
+        #live-world-status {
+            position: fixed;
+            left: 18px;
+            bottom: 18px;
+            z-index: 10;
+            color: rgba(255,255,255,.78);
+            font: 800 11px 'Nunito', sans-serif;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            text-shadow: 0 2px 5px #000;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="w-full h-full flex flex-col items-center justify-center relative select-none">
 
     <!-- Arka Plan Canvas -->
     <canvas id="bgCanvas"></canvas>
+    <div id="live-world-status">Orman canlı</div>
     <div id="toast-container"></div>
 
     <!-- ================= ÜST HEADER ================= -->
@@ -2354,6 +2380,134 @@
         }
         window.addEventListener('resize', resizeBackground);
 
+        const livePlayers = new Map();
+        const liveMobs = new Map();
+        const liveBuildings = new Map();
+        let liveWorldSeed = 0;
+        let liveSocket = null;
+        let liveCamera = { x: 0, y: 0 };
+        let liveFocusMobId = null;
+        let liveFocusChangedAt = 0;
+
+        function mergeLiveState(target, state) {
+            if (!state || !state.id) return;
+            const current = target.get(state.id) || {};
+            target.set(state.id, { ...current, ...state });
+        }
+
+        function setupLiveWorld() {
+            if (typeof io !== 'function') return;
+            liveSocket = io({ path: '/api/socket.io', transports: ['websocket', 'polling'] });
+            liveSocket.on('welcome', data => {
+                liveWorldSeed = Number(data.worldSeed) || 0;
+                livePlayers.clear(); liveMobs.clear(); liveBuildings.clear();
+                Object.entries(data.players || {}).forEach(([id, player]) => mergeLiveState(livePlayers, { ...player, id }));
+                (data.mobs || []).forEach(mob => mergeLiveState(liveMobs, mob));
+                Object.entries(data.buildings || {}).forEach(([id, building]) => liveBuildings.set(id, building));
+            });
+            liveSocket.on('players', states => Object.entries(states || {}).forEach(([id, player]) => mergeLiveState(livePlayers, { ...player, id })));
+            liveSocket.on('player_join', ({ id, state }) => mergeLiveState(livePlayers, { ...state, id }));
+            liveSocket.on('player_respawn', ({ id, state }) => mergeLiveState(livePlayers, { ...state, id }));
+            liveSocket.on('player_left', ({ id }) => livePlayers.delete(id));
+            liveSocket.on('player_dead', ({ id }) => livePlayers.delete(id));
+            liveSocket.on('mob_spawn', mob => mergeLiveState(liveMobs, mob));
+            liveSocket.on('mob_states', states => (states || []).forEach(mob => mergeLiveState(liveMobs, mob)));
+            liveSocket.on('mob_update', mob => mergeLiveState(liveMobs, mob));
+            liveSocket.on('mob_dead', ({ id }) => liveMobs.delete(id));
+            liveSocket.on('build', ({ id, building }) => { if (id && building) liveBuildings.set(id, building); });
+            liveSocket.on('build_destroy', ({ id }) => liveBuildings.delete(id));
+            liveSocket.on('disconnect', () => {
+                const status = document.getElementById('live-world-status');
+                if (status) status.textContent = 'Orman canlı';
+            });
+            liveSocket.on('connect', () => {
+                liveSocket.emit('spectate');
+                const status = document.getElementById('live-world-status');
+                if (status) status.textContent = 'CANLI ORMAN';
+            });
+        }
+
+        function drawLiveMob(ctx, mob, x, y, scale) {
+            const radius = Math.max(18, Number(mob.radius) || 40) * scale;
+            ctx.save(); ctx.translate(x, y); ctx.rotate(Number(mob.angle) || 0);
+            ctx.fillStyle = mob.color || '#6b4932'; ctx.strokeStyle = mob.outline || '#28170d'; ctx.lineWidth = Math.max(2, 5 * scale);
+            ctx.beginPath();
+            if (mob.shape === 'spider') { ctx.ellipse(0, 0, radius * 1.2, radius * .72, 0, 0, Math.PI * 2); }
+            else if (mob.shape === 'scorpion') { ctx.roundRect(-radius, -radius * .6, radius * 2, radius * 1.2, radius * .3); }
+            else { ctx.arc(0, 0, radius, 0, Math.PI * 2); }
+            ctx.fill(); ctx.stroke();
+            if (mob.shape === 'spider') {
+                ctx.strokeStyle = mob.outline || '#28170d'; ctx.lineWidth = Math.max(1.5, 3 * scale);
+                for (let leg = 0; leg < 4; leg++) { const side = leg % 2 ? -1 : 1; const offset = (leg - 1.5) * radius * .45; ctx.beginPath(); ctx.moveTo(offset, side * radius * .35); ctx.lineTo(offset + side * radius * .8, side * radius * .95); ctx.stroke(); }
+            }
+            ctx.fillStyle = mob.eyes || '#ffcc66';
+            ctx.beginPath(); ctx.arc(-radius * .3, -radius * .2, Math.max(2, radius * .13), 0, Math.PI * 2); ctx.arc(radius * .3, -radius * .2, Math.max(2, radius * .13), 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+
+        function drawLiveWorld() {
+            if (!bgCtx) return;
+            const time = _animFrame * 0.016;
+            const players = [...livePlayers.values()].filter(player => Number(player.hp ?? 1) > 0);
+            const mobs = [...liveMobs.values()];
+            let focus;
+            if (players.length) {
+                focus = players[0];
+                liveFocusMobId = null;
+            } else {
+                if (!liveFocusMobId || !liveMobs.has(liveFocusMobId) || _animFrame - liveFocusChangedAt > 900) {
+                    liveFocusMobId = mobs.length ? mobs[Math.floor((Math.abs(liveWorldSeed) + _animFrame / 900) % mobs.length)].id : null;
+                    liveFocusChangedAt = _animFrame;
+                }
+                focus = liveMobs.get(liveFocusMobId) || mobs[0] || { x: 0, y: 0 };
+            }
+            const targetX = Number(focus.x) || 0, targetY = Number(focus.y) || 0;
+            liveCamera.x += (targetX - liveCamera.x) * .055;
+            liveCamera.y += (targetY - liveCamera.y) * .055;
+            const zoom = Math.min(1.05, Math.max(.58, Math.min(bgW, bgH) / 850));
+            const toScreen = (worldX, worldY) => ({ x: bgW / 2 + (worldX - liveCamera.x) * zoom, y: bgH / 2 + (worldY - liveCamera.y) * zoom });
+
+            const sky = bgCtx.createLinearGradient(0, 0, 0, bgH);
+            sky.addColorStop(0, '#183542'); sky.addColorStop(.48, '#2b5938'); sky.addColorStop(1, '#101b16');
+            bgCtx.fillStyle = sky; bgCtx.fillRect(0, 0, bgW, bgH);
+            bgCtx.save(); bgCtx.translate(bgW / 2 - liveCamera.x * zoom, bgH / 2 - liveCamera.y * zoom);
+            bgCtx.globalAlpha = .62;
+            const worldLeft = Math.floor((liveCamera.x - bgW / zoom) / 360) - 1;
+            const worldRight = Math.ceil((liveCamera.x + bgW / zoom) / 360) + 1;
+            const worldTop = Math.floor((liveCamera.y - bgH / zoom) / 360) - 1;
+            const worldBottom = Math.ceil((liveCamera.y + bgH / zoom) / 360) + 1;
+            for (let gx = worldLeft * 360; gx <= worldRight * 360; gx += 360) { for (let gy = worldTop * 360; gy <= worldBottom * 360; gy += 360) {
+                const zone = ((gx + gy + liveWorldSeed) / 360) % 4;
+                bgCtx.fillStyle = zone < 1 ? '#315f39' : zone < 2 ? '#3d6738' : zone < 3 ? '#315b42' : '#426847';
+                bgCtx.fillRect(gx, gy, 360, 360);
+            }}
+            bgCtx.globalAlpha = 1;
+            bgCtx.strokeStyle = 'rgba(180,225,140,.10)'; bgCtx.lineWidth = 3;
+            for (let grid = worldLeft * 360; grid <= worldRight * 360; grid += 180) { bgCtx.beginPath(); bgCtx.moveTo(grid, worldTop * 360); bgCtx.lineTo(grid, worldBottom * 360); bgCtx.stroke(); }
+            for (let grid = worldTop * 360; grid <= worldBottom * 360; grid += 180) { bgCtx.beginPath(); bgCtx.moveTo(worldLeft * 360, grid); bgCtx.lineTo(worldRight * 360, grid); bgCtx.stroke(); }
+            const propHash = value => { const n = Math.sin(value * 12.9898 + liveWorldSeed) * 43758.5453; return n - Math.floor(n); };
+            for (let gx = worldLeft * 360; gx <= worldRight * 360; gx += 360) { for (let gy = worldTop * 360; gy <= worldBottom * 360; gy += 360) {
+                const h = propHash(gx * .013 + gy * .017);
+                const px = gx + 55 + h * 240, py = gy + 62 + propHash(gx * .019 - gy * .011) * 235;
+                if (h < .68) {
+                    bgCtx.fillStyle = 'rgba(12,29,16,.38)'; bgCtx.beginPath(); bgCtx.ellipse(px, py + 34, 30, 11, 0, 0, Math.PI * 2); bgCtx.fill();
+                    bgCtx.fillStyle = h < .32 ? '#6d4927' : '#4f3a22'; bgCtx.fillRect(px - 5, py + 4, 10, 34);
+                    bgCtx.fillStyle = h < .32 ? '#2e7338' : '#3f8b43'; bgCtx.beginPath(); bgCtx.arc(px, py - 5, 29, 0, Math.PI * 2); bgCtx.arc(px - 20, py + 8, 22, 0, Math.PI * 2); bgCtx.arc(px + 20, py + 8, 22, 0, Math.PI * 2); bgCtx.fill();
+                    bgCtx.fillStyle = 'rgba(156,225,104,.18)'; bgCtx.beginPath(); bgCtx.arc(px - 9, py - 17, 11, 0, Math.PI * 2); bgCtx.fill();
+                } else {
+                    bgCtx.fillStyle = 'rgba(10,22,14,.35)'; bgCtx.beginPath(); bgCtx.ellipse(px, py + 14, 25, 9, 0, 0, Math.PI * 2); bgCtx.fill();
+                    bgCtx.fillStyle = '#65705a'; bgCtx.strokeStyle = '#27382b'; bgCtx.lineWidth = 3; bgCtx.beginPath(); bgCtx.ellipse(px, py, 24, 15, h * 2, 0, Math.PI * 2); bgCtx.fill(); bgCtx.stroke();
+                }
+            }}
+            for (const building of liveBuildings.values()) { bgCtx.fillStyle = '#75502d'; bgCtx.strokeStyle = '#23160d'; bgCtx.lineWidth = 5; bgCtx.beginPath(); bgCtx.arc(Number(building.x) || 0, Number(building.y) || 0, 35, 0, Math.PI * 2); bgCtx.fill(); bgCtx.stroke(); }
+            bgCtx.restore();
+
+            for (const mob of mobs) { const point = toScreen(mob.x, mob.y); if (point.x > -100 && point.x < bgW + 100 && point.y > -100 && point.y < bgH + 100) drawLiveMob(bgCtx, mob, point.x, point.y, zoom); }
+            for (const player of players) { const point = toScreen(player.x, player.y); if (point.x > -120 && point.x < bgW + 120 && point.y > -120 && point.y < bgH + 120) drawExactInGamePlayer(bgCtx, point.x, point.y, player.sk || 'wolf', '', _animFrame, Math.max(.34, zoom * .62)); }
+            const status = document.getElementById('live-world-status');
+            if (status) status.textContent = players.length ? `${players.length} OYUNCU CANLI` : 'MOBLAR DOLAŞIYOR';
+        }
+
         // OYUN İÇİ İLE %100 BİREBİR VE SAĞA BAKAN CANLI ÇİZİM MOTORU
         function drawExactInGamePlayer(ctx, cx, cy, skinId, weaponId, t, scale = 0.7) {
             if (!ctx) return;
@@ -2428,43 +2582,9 @@
         function animateMenu() {
             _animFrame++;
             
-            // Canlı, Parlak ve Derin Orman Arka Planı
+            // Canlı oyun dünyası arka planı
             if (bgCtx) {
-                const grd = bgCtx.createRadialGradient(bgW / 2, bgH / 2, 60, bgW / 2, bgH / 2, Math.max(bgW, bgH) * 0.85);
-                grd.addColorStop(0, '#364F24');
-                grd.addColorStop(0.65, '#243717');
-                grd.addColorStop(1, '#15220E');
-                bgCtx.fillStyle = grd;
-                bgCtx.fillRect(0, 0, bgW, bgH);
-
-                // İnce Izgara Deseni
-                bgCtx.strokeStyle = 'rgba(255,255,255,0.025)';
-                bgCtx.lineWidth = 1.5;
-                const gridSize = 100;
-                for (let x = (_animFrame * 0.2) % gridSize; x < bgW; x += gridSize) {
-                    bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, bgH); bgCtx.stroke();
-                }
-                for (let y = (_animFrame * 0.15) % gridSize; y < bgH; y += gridSize) {
-                    bgCtx.beginPath(); bgCtx.moveTo(0, y); bgCtx.lineTo(bgW, y); bgCtx.stroke();
-                }
-
-                // Canlı Ateş Böcekleri & Parıltılar
-                bgParticles.forEach(p => {
-                    p.y -= p.speedY;
-                    p.x += p.speedX;
-                    if (p.y < 0) p.y = bgH;
-                    if (p.x < 0) p.x = bgW;
-                    if (p.x > bgW) p.x = 0;
-
-                    const pulse = p.alpha * (0.6 + Math.sin(_animFrame * 0.05 + p.x) * 0.4);
-                    bgCtx.fillStyle = `rgba(180, 240, 70, ${pulse})`;
-                    bgCtx.shadowColor = '#b4f046';
-                    bgCtx.shadowBlur = 6;
-                    bgCtx.beginPath();
-                    bgCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                    bgCtx.fill();
-                    bgCtx.shadowBlur = 0;
-                });
+                drawLiveWorld();
             }
 
             // 1. Ana Ekran Aktif Karakter Canvası (Canlı & Sağa Bakan)
@@ -2516,7 +2636,7 @@
             checkAuthStatus();
             pingServer();
             setInterval(pingServer, 15000);
-            
+            setupLiveWorld();
             animateMenu();
         });
     </script>
